@@ -1,0 +1,6 @@
+# Sisters Relax — Marrakech
+User-agent: *
+Allow: /
+Disallow: /admin.html
+
+Sitemap: https://sisters-relax-marrakech.com/sitemap.xml
