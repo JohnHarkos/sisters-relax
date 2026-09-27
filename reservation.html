@@ -127,6 +127,35 @@ header{position:sticky;top:0;z-index:100;background:rgba(43,29,20,.96);backdrop-
 .cat-accordeon summary::after{content:'+';font-family:'Jost',sans-serif;font-size:1.3rem;color:var(--or);font-weight:300}
 .cat-accordeon[open] summary::after{content:'−'}
 .cat-accordeon[open] summary{border-bottom:1px solid var(--ligne)}
+
+/* ---------- Sous-familles ----------
+   Une catégorie de 35 soins ne se lit pas. On la replie en familles :
+   la cliente voit six choix au lieu de trente-cinq lignes. */
+.sf-puces{display:flex;flex-wrap:wrap;gap:6px;padding:12px 18px;border-bottom:1px solid var(--ligne);background:var(--creme)}
+.sf-puce{font-family:'Jost',sans-serif;font-size:.82rem;color:var(--texte);
+  background:#FFFDFA;border:1px solid var(--ligne);border-radius:50px;
+  padding:8px 14px;cursor:pointer;line-height:1}
+.sf-puce:hover{border-color:var(--or)}
+.sf-puce[aria-pressed="true"]{background:var(--brun);border-color:var(--brun);color:var(--creme)}
+.sf-puce .n{opacity:.62;margin-left:5px;font-size:.76rem}
+
+/* ---------- Carte de l'offre ----------
+   La photo reste verticale dans un emplacement vertical : un bandeau large
+   ne montrerait qu'une bande de mur. */
+.offre-carte{display:flex;min-height:126px;margin:0 0 18px;background:var(--creme);
+  border:1px solid var(--or-clair);border-radius:0;overflow:hidden;
+  width:100%;text-align:left;cursor:pointer;color:inherit;font:inherit;padding:0}
+.offre-carte:hover{border-color:var(--or)}
+.offre-carte .photo{width:104px;flex:none;align-self:stretch;position:relative;overflow:hidden;background:var(--sable-2)}
+.offre-carte .photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.offre-carte .texte{flex:1;min-width:0;padding:14px 16px;display:flex;flex-direction:column;justify-content:center;gap:4px}
+.offre-carte .eti{font-size:.64rem;letter-spacing:.14em;text-transform:uppercase;color:var(--or-fonce)}
+.offre-carte .nom{font-family:'Cormorant Garamond',serif;font-size:1.22rem;font-weight:600;color:var(--brun);line-height:1.12}
+.offre-carte .ligne{font-size:.88rem;font-weight:500;margin-top:3px}
+.offre-carte .ligne .duree{font-weight:400;color:var(--texte-doux)}
+.offre-carte.choisie{border-color:var(--or);background:#FFF8EC}
+.offre-carte.choisie .eti::after{content:' · choisi'}
+.offre-qte{border:1px solid var(--or-clair);border-top:none;margin:-18px 0 18px;padding-top:12px}
 .presta{display:flex;align-items:center;gap:12px;padding:13px 18px;border-bottom:1px solid var(--ligne);width:100%;background:none;border-left:none;border-right:none;border-top:none;text-align:left;cursor:pointer;color:inherit;font-size:inherit}
 .presta-bloc:last-child .presta{border-bottom:none}
 /* Nombre de personnes, soin par soin, directement sous le soin choisi */
@@ -286,6 +315,11 @@ header{position:sticky;top:0;z-index:100;background:rgba(43,29,20,.96);backdrop-
 .confirm-carte .val{font-weight:500;text-align:right;color:var(--brun)}
 .statut-info{background:var(--sable-2);border-radius:0;padding:14px 18px;font-size:.88rem;color:var(--brun-2)}
 :focus-visible{outline:2px solid var(--or);outline-offset:2px;border-radius:6px}
+
+/* Un « display » écrit dans cette feuille l'emporte sur l'attribut hidden du
+   navigateur : sans cette règle, tous les blocs en display:flex qui démarrent
+   masqués laissent une bande vide. Elle est en dernier pour gagner. */
+[hidden]{display:none}
 </style>
 </head>
 <body>
@@ -314,9 +348,18 @@ header{position:sticky;top:0;z-index:100;background:rgba(43,29,20,.96);backdrop-
   <div class="recap" id="recap"></div>
 
   <section class="etape active" id="etape1">
-    <h1>Vos soins</h1>
-    <p class="sous" id="sousEtape1">Choisissez un ou plusieurs soins.</p>
+    <h1>Choisissez vos soins</h1>
+    <p class="sous" id="sousEtape1">Un ou plusieurs, comme vous voulez.</p>
+    <!-- Remplie par rendreOffre() depuis OFFRE (app-config.js). Masquée si
+         aucune catégorie d'offre n'est configurée ou si elle est vide.
+         Elle passe avant la phrase sur les groupes : c'est ce que la
+         publicité promet, ça ne doit rien avoir devant. -->
+    <div id="offreBloc" hidden>
+      <button type="button" class="offre-carte" id="offreCarte"></button>
+      <div class="presta-qte offre-qte" id="offreQte" hidden></div>
+    </div>
     <p class="np-ligne">Vous venez à plusieurs&nbsp;? Indiquez le nombre de personnes sous chaque soin. <a class="np-plus" id="npPlus" href="#" target="_blank" rel="noopener"><span>Plus de 4&nbsp;? Écrivez-nous sur WhatsApp</span></a></p>
+
     <div id="listePresta"></div>
   </section>
 
@@ -701,7 +744,7 @@ function escArg(v){ return esc(JSON.stringify(String(v ?? ''))); }
 function catalogueDepuisConfig(){
   return PRESTATIONS.map(p => ({ id: p.id, cat: p.cat, nom: p.nom, apartir: !!p.apartir,
     devis: !!p.devis, duree: p.duree, prix: Number(p.prix), description: p.description || null,
-    collabs: COLLABORATRICES.map(c => c.id) }));
+    collabs: COLLABORATRICES.map(c => c.id), sf: p.sf || null }));
 }
 let RESA_OUVERTE = true;
 let EFFECTIF = EFFECTIF_DEFAUT;
@@ -729,7 +772,8 @@ async function chargerCatalogue(){
     if(error || !data || !data.length) throw (error || new Error('catalogue vide'));
     CATALOGUE = data.map(p => ({ id: p.id, cat: p.categorie, nom: p.nom, apartir: p.prix_apartir,
       devis: !!p.sur_devis, duree: p.duree_minutes, prix: Number(p.prix),
-      description: p.description, collabs: p.collaboratrices || [] }));
+      description: p.description, collabs: p.collaboratrices || [],
+      sf: (p.sous_famille || '').trim() || null }));
   } catch(e){
     console.warn('Catalogue base indisponible, repli sur la configuration :', e);
     CATALOGUE = catalogueDepuisConfig();
@@ -744,32 +788,129 @@ function lienDevis(p){
   return `https://wa.me/${SALON.whatsapp}?text=${encodeURIComponent(msg)}`;
 }
 
+function ligneDe(p){
+  if(p.devis){
+    return `<div class="presta-bloc"><div class="presta devis">
+      <div class="infos"><strong>${esc(p.nom)}</strong>${p.description ? '<span>' + esc(p.description) + '</span>' : ''}<em class="badge-devis">Sur devis</em></div>
+      <div class="droite"><a class="btn-devis" href="${lienDevis(p)}" target="_blank" rel="noopener" onclick="metaTrack('Contact',{content_name:${esc(JSON.stringify(p.nom))}})">${ICONE_WA}Devis</a></div>
+    </div></div>`;
+  }
+  return `<div class="presta-bloc">
+    <button type="button" class="presta" data-id="${esc(p.id)}" aria-pressed="false" onclick="basculerPresta(${escArg(p.id)})">
+      <span class="coche"></span>
+      <span class="infos"><strong>${esc(p.nom)}</strong>${p.description ? '<span>' + esc(p.description) + '</span>' : ''}</span>
+      <span class="droite"><span class="prix">${p.apartir ? '<small>à partir de</small>' : ''}${Math.round(p.prix)} DH</span><span class="duree">${dureeTxt(p.duree)}</span></span>
+    </button>
+    <div class="presta-qte" data-pq="${esc(p.id)}" hidden></div>
+  </div>`;
+}
+
+/* Les soins qu'on n'a pas encore rangés se retrouvent ici, en dernier. */
+const SANS_FAMILLE = 'Autres';
+function familleDe(p){ return p.sf || SANS_FAMILLE; }
+
+/* Familles d'une catégorie, dans l'ordre d'apparition des soins : c'est
+   l'ordre que le salon règle lui-même dans l'admin. */
+function famillesDe(liste){
+  const noms = [];
+  liste.forEach(p => { const f = familleDe(p); if(noms.indexOf(f) < 0) noms.push(f); });
+  const i = noms.indexOf(SANS_FAMILLE);
+  if(i >= 0 && noms.length > 1){ noms.splice(i, 1); noms.push(SANS_FAMILLE); }
+  return noms;
+}
+
+/* La catégorie présentée en carte n'est pas répétée dans la liste quand elle
+   ne contient qu'un soin : la carte la montre déjà en entier. */
+function catDeLOffre(){
+  try{
+    if(typeof OFFRE !== 'object' || !OFFRE || !OFFRE.categorie) return null;
+    return OFFRE.categorie;
+  }catch(e){ return null; }
+}
+function catMasqueeParOffre(){
+  const cat = catDeLOffre();
+  if(!cat) return null;
+  return CATALOGUE.filter(p => p.cat === cat).length === 1 ? cat : null;
+}
+
 function rendrePrestations(){
   const zone = document.getElementById('listePresta');
+  const masquee = catMasqueeParOffre();
   const cats = [];
-  CATALOGUE.forEach(p => { if(!cats.includes(p.cat)) cats.push(p.cat); });
+  CATALOGUE.forEach(p => { if(p.cat !== masquee && cats.indexOf(p.cat) < 0) cats.push(p.cat); });
   zone.innerHTML = cats.map(cat => {
-    const lignes = CATALOGUE.filter(p => p.cat === cat).map(p => {
-      if(p.devis){
-        return `<div class="presta-bloc"><div class="presta devis">
-          <div class="infos"><strong>${esc(p.nom)}</strong>${p.description ? '<span>' + esc(p.description) + '</span>' : ''}<em class="badge-devis">Sur devis</em></div>
-          <div class="droite"><a class="btn-devis" href="${lienDevis(p)}" target="_blank" rel="noopener" onclick="metaTrack('Contact',{content_name:${esc(JSON.stringify(p.nom))}})">${ICONE_WA}Devis</a></div>
-        </div></div>`;
-      }
-      return `<div class="presta-bloc">
-        <button type="button" class="presta" data-id="${esc(p.id)}" aria-pressed="false" onclick="basculerPresta(${escArg(p.id)})">
-          <span class="coche"></span>
-          <span class="infos"><strong>${esc(p.nom)}</strong>${p.description ? '<span>' + esc(p.description) + '</span>' : ''}</span>
-          <span class="droite"><span class="prix">${p.apartir ? '<small>à partir de</small>' : ''}${Math.round(p.prix)} DH</span><span class="duree">${dureeTxt(p.duree)}</span></span>
-        </button>
-        <div class="presta-qte" data-pq="${esc(p.id)}" hidden></div>
-      </div>`;
-    }).join('');
+    const liste = CATALOGUE.filter(p => p.cat === cat);
+    const familles = famillesDe(liste);
+    let corps;
+    if(familles.length < 2){
+      /* Une seule famille : la catégorie s'affiche exactement comme avant. */
+      corps = `<div class="sf-groupe" data-cat="${esc(cat)}">${liste.map(ligneDe).join('')}</div>`;
+    } else {
+      const puces = familles.map((f, i) =>
+        `<button type="button" class="sf-puce" aria-pressed="${i === 0 ? 'true' : 'false'}"
+           data-cat="${esc(cat)}" data-sf="${esc(f)}" onclick="choisirFamille(${escArg(cat)},${escArg(f)})"
+          >${esc(f)}<span class="n">${liste.filter(p => familleDe(p) === f).length}</span></button>`).join('');
+      const groupes = familles.map((f, i) =>
+        `<div class="sf-groupe" data-cat="${esc(cat)}" data-sf="${esc(f)}"${i === 0 ? '' : ' hidden'}>`
+        + liste.filter(p => familleDe(p) === f).map(ligneDe).join('') + '</div>').join('');
+      corps = `<div class="sf-puces">${puces}</div>${groupes}`;
+    }
     return `<details class="cat-accordeon" data-cat="${esc(cat)}">
       <summary>${esc(cat)}<span class="compte"></span></summary>
-      <div>${lignes}</div>
+      <div>${corps}</div>
     </details>`;
   }).join('');
+}
+
+/* Changer de famille ne touche pas à la sélection : on ne fait que montrer
+   un groupe et cacher les autres, dans cette catégorie uniquement. */
+function choisirFamille(cat, sf){
+  document.querySelectorAll('.sf-puce[data-cat]').forEach(b => {
+    if(b.dataset.cat !== cat) return;
+    b.setAttribute('aria-pressed', b.dataset.sf === sf ? 'true' : 'false');
+  });
+  document.querySelectorAll('.sf-groupe[data-sf]').forEach(g => {
+    if(g.dataset.cat !== cat) return;
+    g.hidden = g.dataset.sf !== sf;
+  });
+}
+
+/* Ouvre la catégorie et la famille d'un soin, pour qu'il soit visible. */
+function devoilerSoin(id){
+  const el = document.querySelector('.presta[data-id="' + CSS.escape(String(id)) + '"]');
+  if(!el) return null;
+  const groupe = el.closest('.sf-groupe');
+  if(groupe && groupe.dataset.sf) choisirFamille(groupe.dataset.cat, groupe.dataset.sf);
+  const det = el.closest('details');
+  if(det) det.open = true;
+  return el;
+}
+
+/* Carte de l'offre : le premier soin de la catégorie configurée, présenté en
+   grand avec sa photo. C'est ce que la publicité promet, la cliente doit le
+   retrouver sans chercher. Elle se coche comme n'importe quel autre soin. */
+function rendreOffre(){
+  const bloc = document.getElementById('offreBloc');
+  const carte = document.getElementById('offreCarte');
+  const qte = document.getElementById('offreQte');
+  if(!bloc || !carte) return;
+  const cat = catDeLOffre();
+  if(!cat) return;
+  const p = CATALOGUE.find(x => x.cat === cat && !x.devis);
+  if(!p) return;
+  let photo = '';
+  try{ photo = (OFFRE.photo || '').trim(); }catch(e){ photo = ''; }
+  carte.innerHTML =
+    (photo ? `<span class="photo"><img src="${esc(photo)}" alt="" width="420" height="525" decoding="async"></span>` : '')
+    + `<span class="texte">
+        <span class="eti">${esc(cat)}</span>
+        <span class="nom">${esc(p.nom)}</span>
+        <span class="ligne">${p.apartir ? 'à partir de ' : ''}${Math.round(p.prix)} DH <span class="duree">· ${esc(dureeTxt(p.duree))}</span></span>
+      </span>`;
+  carte.dataset.id = String(p.id);
+  carte.onclick = function(){ basculerPresta(p.id); };
+  if(qte) qte.dataset.pq = String(p.id);
+  bloc.hidden = false;
 }
 
 /* ---------- Venir à plusieurs ----------
@@ -869,11 +1010,15 @@ function majSelection(){
     const n = etat.selection.filter(p => p.cat === d.dataset.cat).length;
     d.querySelector('.compte').textContent = n ? n + ' choisie' + (n > 1 ? 's' : '') : '';
   });
+  /* La carte de l'offre se coche comme un soin de la liste. */
+  const carteOffre = document.getElementById('offreCarte');
+  if(carteOffre && carteOffre.dataset.id)
+    carteOffre.classList.toggle('choisie', ids.indexOf(carteOffre.dataset.id) >= 0);
   const n = etat.selection.length;
   document.getElementById('sousEtape1').textContent = n
     ? `${n} soin${n > 1 ? 's' : ''} choisi${n > 1 ? 's' : ''}.`
       + (n >= MAX_PRESTA - 1 ? ` ${MAX_PRESTA} maximum par rendez-vous.` : '')
-    : 'Choisissez un ou plusieurs soins.';
+    : 'Un ou plusieurs, comme vous voulez.';
   /* Nombre de personnes soin par soin, sous chaque soin choisi */
   document.querySelectorAll('.presta-qte[data-pq]').forEach(z => {
     const p = etat.selection.find(x => String(x.id) === z.dataset.pq);
@@ -1429,6 +1574,7 @@ function formatDateFr(iso){
   }
   rendrePersonnes();
   rendrePrestations();
+  rendreOffre();
   majSelection();
   /* Pré-sélection depuis le site vitrine ou depuis une publicité (?p=nom).
      Tirets, accents et casse sont ignorés : ?p=hammam-massage-30-min fonctionne.
@@ -1457,10 +1603,13 @@ function formatDateFr(iso){
     }
     if(p){
       basculerPresta(p.id);
-      const det = document.querySelector(`.presta[data-id="${CSS.escape(String(p.id))}"]`);
+      /* Le soin peut être replié dans une sous-famille, ou présenté en carte
+         plutôt que dans la liste : devoilerSoin ouvre ce qu'il faut, et on se
+         rabat sur la carte quand il n'est pas dans la liste. */
+      const carte = document.getElementById('offreCarte');
+      const det = devoilerSoin(p.id)
+        || ((carte && carte.dataset.id === String(p.id) && !document.getElementById('offreBloc').hidden) ? carte : null);
       if(det){
-        const bloc = det.closest('details');
-        if(bloc) bloc.open = true;
         /* Sur mobile, ouvrir la catégorie ne suffit pas : sans ce défilement,
            la cliente ne voit pas que son soin est déjà sélectionné. */
         setTimeout(function(){ try{ det.scrollIntoView({ behavior:'smooth', block:'center' }); }catch(e){ det.scrollIntoView(); } }, 250);

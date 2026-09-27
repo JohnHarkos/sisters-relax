@@ -225,6 +225,10 @@ tr:last-child td{border-bottom:none}
 .coches input{width:auto !important}
 
 /* ---- FICHIER CLIENTES ---- */
+/* Un « display » écrit ici l'emporte sur l'attribut hidden du navigateur :
+   sans cette règle, le compteur des rappels afficherait « 0 » au lieu de
+   disparaître quand il n'y a aucun rendez-vous demain. */
+[hidden]{display:none}
 .badge-onglet{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:50px;background:var(--rouge);color:#fff;font-size:.72rem;font-weight:700;margin-left:4px;vertical-align:middle}
 .jour-separateur{font-family:'Cormorant Garamond',serif;font-weight:600;font-size:1rem;color:var(--violet-950);margin:22px 0 10px;padding-bottom:7px;border-bottom:2px solid var(--lilas-deep);text-transform:capitalize;display:flex;justify-content:space-between;align-items:baseline}
 .jour-separateur:first-child{margin-top:0}
@@ -434,6 +438,13 @@ section.vue.active{display:block}
     <div class="champ" id="zoneNouvelleCat" style="display:none">
       <label for="pNouvelleCat">Nom de la nouvelle catégorie</label>
       <input type="text" id="pNouvelleCat" placeholder="ex : Maquillage">
+    </div>
+    <!-- La sous-famille replie une grosse catégorie sur la page de réservation.
+         Laissée vide, la catégorie s'affiche comme avant. -->
+    <div class="champ"><label for="pSousFamille">Sous-famille (optionnelle)</label>
+      <input type="text" id="pSousFamille" list="listeSousFamilles" placeholder="ex : Lissage, Couleur, Brushing…">
+      <datalist id="listeSousFamilles"></datalist>
+      <span style="display:block;font-size:.78rem;color:var(--texte-doux);margin-top:5px">Replie la catégorie en onglets sur la page de réservation. Il en faut au moins deux dans la même catégorie pour que les onglets apparaissent.</span>
     </div>
     <div class="champ-duo">
       <div class="champ"><label for="pPrix">Prix (DH)</label><input type="number" id="pPrix" min="0" max="50000" step="1"></div>
@@ -1875,6 +1886,16 @@ function ouvrirPresta(id, mode, catParDefaut){
   categorieChoisie();
   document.getElementById('pNom').value = source.nom ? (mode === 'dupliquer' ? source.nom + ' (copie)' : source.nom) : '';
   document.getElementById('pDescription').value = source.description || '';
+  document.getElementById('pSousFamille').value = source.sous_famille || '';
+  /* Suggestions : les sous-familles déjà utilisées, pour éviter qu'une faute
+     de frappe crée deux onglets au lieu d'un. */
+  const familles = [];
+  catalogueAdmin.forEach(x => {
+    const f = (x.sous_famille || '').trim();
+    if(f && familles.indexOf(f) < 0) familles.push(f);
+  });
+  document.getElementById('listeSousFamilles').innerHTML =
+    familles.sort().map(f => `<option value="${esc(f)}"></option>`).join('');
   document.getElementById('pPrix').value = source.prix != null ? source.prix : '';
   document.getElementById('pDuree').value = source.duree_minutes || '';
   document.getElementById('pApartir').checked = !!source.prix_apartir;
@@ -1908,8 +1929,9 @@ async function enregistrerPresta(){
   if(isNaN(duree) || duree < 5){ alert('Merci d\'indiquer une durée (minimum 5 minutes).'); return; }
   if(!collabs.length){ alert('Sélectionne au moins une collaboratrice.'); return; }
 
+  const sousFamille = document.getElementById('pSousFamille').value.trim() || null;
   const donnees = {
-    categorie, nom, description, prix,
+    categorie, nom, description, prix, sous_famille: sousFamille,
     prix_apartir: document.getElementById('pApartir').checked,
     sur_devis: document.getElementById('pDevis').checked,
     duree_minutes: duree,
